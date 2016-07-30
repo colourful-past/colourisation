@@ -1,6 +1,12 @@
 import os
 import sys
 
+import boto3
+import urllib
+import StringIO
+import hashlib
+
+import logging
 import tornado
 from tornado.web import url
 
@@ -35,13 +41,18 @@ class GetImage(tornado.web.RequestHandler):
     # SUPPORTED_METHODS = ('GET')
 
     def get(self):
-        input_file = self.get_argument('input_file')
-        output_file = self.get_argument('output_file')
+        input_image_url = self.get_argument('url')
+
+        # generate a filename with the MD5 of input URL
+        generated_filename = hashlib.md5(input_image_url).hexdigest() + '.jpg'
+
+        input_filename = '/tmp/{}'.format(generated_filename)
+        urllib.urlretrieve(input_image_url, input_filename)
 
         ####
 
         # this Caffe API wants a filename string and I'm too lazy to wrange skimage directly
-        img_rgb = caffe.io.load_image(input_file)
+        img_rgb = caffe.io.load_image(input_filename)
         img_lab = color.rgb2lab(img_rgb) # convert image to lab color space
         img_l = img_lab[:,:,0] # pull out L channel
         (H_orig,W_orig) = img_rgb.shape[:2] # original image size
@@ -63,14 +74,25 @@ class GetImage(tornado.web.RequestHandler):
 
         ####
 
+        f = StringIO.StringIO()
         image_array = np.uint8(img_rgb_out*255)
-        f = open(output_file, 'w')
         PIL.Image.fromarray(image_array).save(f, 'jpeg')
 
         ####
+        
+        s3 = boto3.Session(
+            aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+            aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
+        ).resource('s3')
+
+        s3.Bucket('colourful-past').put_object(
+            Key=generated_filename,
+            Body=f.getvalue(),
+            ContentType='image/jpeg'
+        )
 
         self.set_status(200)
-        self.write(output_file)
+        self.write("https://s3-us-west-2.amazonaws.com/colourful-past/{}".format(generated_filename))
 
 ############
 
@@ -85,7 +107,8 @@ def main():
     app = make_app(tornado_settings)
     app.listen(tornado_settings['port'])
     tornado.ioloop.IOLoop.current().start()
-    print "Tornado server listening on port {}".format(tornado_settings['port'])
+
+    logging.info("Tornado server listening on port {}".format(tornado_settings['port']))
 
 if __name__ == '__main__':
     main()
