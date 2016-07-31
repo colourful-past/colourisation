@@ -1,6 +1,7 @@
 import os
 import sys
 
+import json
 import boto3
 import urllib
 import StringIO
@@ -37,6 +38,12 @@ net.blobs['Trecip'].data[...] = 6/np.log(10) # 1/T, set annealing temperature
 
 ############
 
+with open(os.path.expanduser('~') + '/keys.json') as f:
+    s = f.read()
+    keys = json.loads(s)
+
+############
+
 class GetImage(tornado.web.RequestHandler):
     # SUPPORTED_METHODS = ('GET')
 
@@ -46,6 +53,31 @@ class GetImage(tornado.web.RequestHandler):
         # generate a filename with the MD5 of input URL
         generated_filename = hashlib.md5(input_image_url).hexdigest() + '.jpg'
 
+        s3 = boto3.Session(
+            aws_access_key_id=keys['AWS_ACCESS_KEY_ID'],
+            aws_secret_access_key=keys['AWS_SECRET_ACCESS_KEY'],
+        ).resource('s3')
+
+        ####
+        # check if the file already exists; if so, exit early
+        # http://stackoverflow.com/a/33843019
+        exists = False
+
+        try:
+            s3.Object('colourful-past', generated_filename).load()
+        except botocore.exceptions.ClientError as e:
+            # if e.response['Error']['Code'] == "404":
+                exists = False
+        else:
+            exists = True
+
+        if exists:
+            self.set_status(200)
+            self.write("https://s3-us-west-2.amazonaws.com/colourful-past/{}".format(generated_filename))
+            return
+
+        ####
+        
         input_filename = '/tmp/{}'.format(generated_filename)
         urllib.urlretrieve(input_image_url, input_filename)
 
@@ -80,11 +112,6 @@ class GetImage(tornado.web.RequestHandler):
 
         ####
         
-        s3 = boto3.Session(
-            aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
-            aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
-        ).resource('s3')
-
         s3.Bucket('colourful-past').put_object(
             Key=generated_filename,
             Body=f.getvalue(),
