@@ -3,6 +3,7 @@ import sys
 
 import json
 import boto3
+import botocore
 import urllib
 import StringIO
 import hashlib
