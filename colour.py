@@ -28,14 +28,18 @@ caffe.set_device(0)
 # download model from https://www.dropbox.com/s/8iq5wm4ton5gwe1/colorization_release_v0.caffemodel
 # and/or see demo notebook: https://github.com/richzhang/colorization
 net = caffe.Net(
-    '/home/ubuntu/model/colorization/colorization_deploy_v0.prototxt',
-    '/home/ubuntu/model/colorization/colorization_release_v0.caffemodel',
+    # '/home/ubuntu/model/colorization/colorization_deploy_v0.prototxt',
+    '/home/ubuntu/model/colorization/colorization_deploy_v2.prototxt',
+    # '/home/ubuntu/model/colorization/colorization_release_v0.caffemodel',
+    '/home/ubuntu/model/colorization/colorization_release_v2.caffemodel',
     caffe.TEST
 )
 
 (H_in,W_in) = net.blobs['data_l'].data.shape[2:] # get input shape
 (H_out,W_out) = net.blobs['class8_ab'].data.shape[2:] # get output shape
-net.blobs['Trecip'].data[...] = 6/np.log(10) # 1/T, set annealing temperature
+
+pts_in_hull = np.load('/home/ubuntu/model/colorization/pts_in_hull.npy') # load cluster centers
+net.params['class8_ab'][0].data[:,:,0,0] = pts_in_hull.transpose((1,0)) # populate cluster centers as 1x1 convolution kernel
 
 ############
 
